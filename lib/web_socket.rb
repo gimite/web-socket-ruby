@@ -243,7 +243,7 @@ if __FILE__ == $0
       end
     
     when "client"
-      client = WebSocket.new(ARGV[1] || "ws://localhost:19006/")
+      client = WebSocket.new(ARGV[1] || "ws://localhost:10081/")
       puts("Ready")
       Thread.new() do
         while data = client.receive()
