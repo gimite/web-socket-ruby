@@ -124,26 +124,6 @@ class WebSocket
         raise(WebSocket::Error, "input must start with \\x00 and end with \\xff")
       end
       return $1.force_encoding("UTF-8")
-=begin
-      begin
-        while @received.empty?
-          new_data = @socket.readpartial(10240)
-          if new_data =~ /\A(.*)\xff(.*)\z/n
-            @buffer << $1
-            next_buf = $2
-            if !(@buffer =~ /\A\x00(.*)\z/n)
-              raise(WebSocket::Error, "input must start with \\x00")
-            end
-            @received.push($1.force_encoding("UTF-8"))
-            @buffer = next_buf
-          else
-            @buffer << new_data
-          end
-        end
-      rescue EOFError
-      end
-      return @received.shift()
-=end
     end
     
     def tcp_socket
@@ -243,7 +223,7 @@ if __FILE__ == $0
     
     when "server"
       server = WebSocketServer.new(
-        ARGV[1] || "ws://localhost:19006",
+        ARGV[1] || "ws://localhost:10081",
         :host => "0.0.0.0")
       puts("Ready")
       server.run() do |ws|

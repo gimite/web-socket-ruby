@@ -4,7 +4,7 @@ require "thread"
 Thread.abort_on_exception = true
 
 server = WebSocketServer.new(
-  ARGV[0] || "ws://localhost:19006",
+  ARGV[0] || "ws://localhost:10081",
   :host => "0.0.0.0")
 puts("Ready")
 connections = []
