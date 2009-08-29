@@ -15,28 +15,23 @@
 
 Server:
 
-  # Runs the server at port 10081.
-  server = WebSocketServer.new("ws://example.com:10081")
+  # Runs the server at port 10081. It allows connections whose origin is example.com.
+  server = WebSocketServer.new("ws://example.com:10081", :accepted_domains => ["example.com"])
   server.run() do |ws|
     # The block is called for each connection.
-    # Checks origin (host name of the Web page the Web Socket is used).
-    if ws.origin == "http://example.com"
-      # Checks requested path.
-      if ws.path == "/"
-        # Call ws.handshake() without argument first.
-        ws.handshake()
-        # Receives one message from the client as String.
-        while data = ws.receive()
-          puts(data)
-          # Sends the message to the client.
-          ws.send(data)
-        end
-      else
-        # You can call ws.handshake() with argument to return error status.
-        ws.handshake("404 Not Found")
+    # Checks requested path.
+    if ws.path == "/"
+      # Call ws.handshake() without argument first.
+      ws.handshake()
+      # Receives one message from the client as String.
+      while data = ws.receive()
+        puts(data)
+        # Sends the message to the client.
+        ws.send(data)
       end
     else
-      ws.handshake("403 Forbidden")
+      # You can call ws.handshake() with argument to return error status.
+      ws.handshake("404 Not Found")
     end
   end
 
