@@ -1,4 +1,6 @@
-# Ref: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-31
+# Copyright: Hiroshi Ichikawa <http://gimite.net/en/>
+# Lincense: New BSD Lincense
+# Reference: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-31
 
 require "socket"
 require "uri"
@@ -60,7 +62,7 @@ class WebSocket
         end
         @path = (uri.path.empty? ? "/" : uri.path) + (uri.query ? "?" + uri.query : "")
         origin = params[:origin] || "http://#{uri.host}"
-        @socket = TCPSocket.new(uri.host, uri.port || 81)
+        @socket = TCPSocket.new(uri.host, uri.port || 80)
         @socket.write(
           "GET #{@path} HTTP/1.1\r\n" +
           "Upgrade: WebSocket\r\n" +
@@ -169,7 +171,7 @@ class WebSocketServer
     
     def initialize(uri, params = {})
       @uri = uri.is_a?(String) ? URI.parse(uri) : uri
-      port = params[:port] || @uri.port || 81
+      port = params[:port] || @uri.port || 80
       if params[:host]
         @tcp_server = TCPServer.open(params[:host], port)
       else

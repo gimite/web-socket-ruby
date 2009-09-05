@@ -1,3 +1,6 @@
+# Copyright: Hiroshi Ichikawa <http://gimite.net/en/>
+# Lincense: New BSD Lincense
+
 require "web_socket"
 require "thread"
 
