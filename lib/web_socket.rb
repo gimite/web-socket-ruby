@@ -50,6 +50,10 @@ class WebSocket
         end
         @path = $1
         read_header()
+        if !@server.accepted_origin?(self.origin)
+          raise(WebSocket::Error, "unaccepted origin: %s (server.accepted_domains = %p)" %
+            [self.origin, @server.accepted_domains])
+        end
         @handshaked = false
         
       else # client
@@ -171,22 +175,23 @@ class WebSocketServer
     
     def initialize(uri, params = {})
       @uri = uri.is_a?(String) ? URI.parse(uri) : uri
-      port = params[:port] || @uri.port || 80
+      @port = params[:port] || @uri.port || 80
+      @accepted_domains = params[:accepted_domains] || [@uri.host]
       if params[:host]
-        @tcp_server = TCPServer.open(params[:host], port)
+        @tcp_server = TCPServer.open(params[:host], @port)
       else
-        @tcp_server = TCPServer.open(port)
+        @tcp_server = TCPServer.open(@port)
       end
     end
     
-    attr_reader(:tcp_server, :uri)
+    attr_reader(:tcp_server, :uri, :port, :accepted_domains)
     
     def run(&block)
       while true
         Thread.start(accept()) do |s|
           begin
             ws = create_web_socket(s)
-            yield(ws)
+            yield(ws) if ws
           rescue => ex
             print_backtrace(ex)
           ensure
@@ -203,8 +208,21 @@ class WebSocketServer
       return @tcp_server.accept()
     end
     
+    def accepted_origin?(origin)
+      domain = URI.parse(origin).host
+      return @accepted_domains.any?(){ |d| File.fnmatch(d, domain) }
+    end
+    
     def create_web_socket(socket)
-      return WebSocket.new(socket, :server => self)
+      ch = socket.getc()
+      if ch == ?<
+        # This is Flash socket policy file request, not an actual Web Socket connection.
+        send_flash_socket_policy_file(socket)
+        return nil
+      else
+        socket.ungetc(ch)
+        return WebSocket.new(socket, :server => self)
+      end
     end
     
   private
@@ -214,6 +232,20 @@ class WebSocketServer
       for s in ex.backtrace[1..-1]
         $stderr.printf("        %s\n", s)
       end
+    end
+    
+    # Handles Flash socket policy file request sent when web-socket-js is used:
+    # http://github.com/gimite/web-socket-js/tree/master
+    def send_flash_socket_policy_file(socket)
+      socket.puts('<?xml version="1.0"?>')
+      socket.puts('<!DOCTYPE cross-domain-policy SYSTEM ' +
+        '"http://www.macromedia.com/xml/dtds/cross-domain-policy.dtd">')
+      socket.puts('<cross-domain-policy>')
+      for domain in @accepted_domains
+        socket.puts("<allow-access-from domain=\"#{domain}\" to-ports=\"#{@port}\"/>")
+      end
+      socket.puts('</cross-domain-policy>')
+      socket.close()
     end
 
 end
