@@ -182,14 +182,14 @@ class WebSocket
     
     def gets(rs = $/)
       line = @socket.gets(rs)
-      $stderr.printf("recv> %p\n" % line) if WebSocket.debug
+      $stderr.printf("recv> %p\n", line) if WebSocket.debug
       return line
     end
     
     def write(data)
       if WebSocket.debug
         data.scan(/\G(.*?(\n|\z))/n) do
-          $stderr.printf("send> %p\n" % $&) if !$&.empty?
+          $stderr.printf("send> %p\n", $&) if !$&.empty?
         end
       end
       @socket.write(data)

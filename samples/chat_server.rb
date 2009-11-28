@@ -1,6 +1,7 @@
 # Copyright: Hiroshi Ichikawa <http://gimite.net/en/>
 # Lincense: New BSD Lincense
 
+$LOAD_PATH << "./lib"
 require "web_socket"
 require "thread"
 

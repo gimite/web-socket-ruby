@@ -1,10 +1,10 @@
 * How to run sample
 
 - Run sample Web Socket server (echo server) with:
-  $ ruby web_socket.rb server ws://localhost:10081
+  $ ruby samples/echo_server.rb ws://localhost:10081
 
 - Run sample Web Socket client and type something:
-  $ ruby web_socket.rb client ws://localhost:10081
+  $ ruby samples/stdio_client.rb ws://localhost:10081
   Ready
   hoge
   Sent: "hoge"
