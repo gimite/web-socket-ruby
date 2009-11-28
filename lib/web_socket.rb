@@ -35,6 +35,12 @@ end
 
 class WebSocket
     
+    class << self
+        
+        attr_accessor(:debug)
+        
+    end
+    
     class Error < RuntimeError
     
     end
@@ -44,7 +50,7 @@ class WebSocket
         
         @server = params[:server]
         @socket = arg
-        line = @socket.gets().chomp()
+        line = gets().chomp()
         if !(line =~ /\AGET (\S+) HTTP\/1.1\z/n)
           raise(WebSocket::Error, "invalid request: #{line}")
         end
@@ -65,17 +71,18 @@ class WebSocket
           raise(WebSocket::Error, "unsupported scheme: #{uri.scheme}")
         end
         @path = (uri.path.empty? ? "/" : uri.path) + (uri.query ? "?" + uri.query : "")
+        host = uri.host + (uri.port == 80 ? "" : ":#{uri.port}")
         origin = params[:origin] || "http://#{uri.host}"
         @socket = TCPSocket.new(uri.host, uri.port || 80)
-        @socket.write(
+        write(
           "GET #{@path} HTTP/1.1\r\n" +
           "Upgrade: WebSocket\r\n" +
           "Connection: Upgrade\r\n" +
-          "Host: #{uri.host}\r\n" +
+          "Host: #{host}\r\n" +
           "Origin: #{origin}\r\n" +
           "\r\n")
-        @socket.flush()
-        line = @socket.gets().chomp()
+        flush()
+        line = gets().chomp()
         raise(WebSocket::Error, "bad response: #{line}") if !(line =~ /\AHTTP\/1.1 101 /n)
         read_header()
         if @header["WebSocket-Origin"] != origin
@@ -91,6 +98,8 @@ class WebSocket
     
     attr_reader(:server, :header, :path)
     
+    REQUIRED_HEADER_KEYS = ["Upgrade", "Connection", "WebSocket-Origin", "WebSocket-Location"]
+    
     def handshake(status = nil, header = {})
       if @handshaked
         raise(WebSocket::Error, "handshake has already been done")
@@ -103,11 +112,14 @@ class WebSocket
         "WebSocket-Location" => @server.uri + @path,
       }
       header = def_header.merge(header)
-      header_str = header.map(){ |k, v| "#{k}: #{v}\r\n" }.join("")
-      @socket.write(
+      # It seems 4 required header entries must appear in this order, otherwise connection with
+      # Chrome WebSocket implementation fails.
+      keys = REQUIRED_HEADER_KEYS + (header.keys - REQUIRED_HEADER_KEYS)
+      header_str = keys.map(){ |k| "#{k}: #{header[k]}\r\n" }.join("")
+      write(
         "HTTP/1.1 #{status}\r\n" +
         "#{header_str}\r\n")
-      @socket.flush()
+      flush()
       @handshaked = true
     end
     
@@ -116,15 +128,15 @@ class WebSocket
         raise(WebSocket::Error, "call WebSocket\#handshake first")
       end
       data = data.dup().force_encoding("ASCII-8BIT")
-      @socket.write("\x00#{data}\xff")
-      @socket.flush()
+      write("\x00#{data}\xff")
+      flush()
     end
     
     def receive()
       if !@handshaked
         raise(WebSocket::Error, "call WebSocket\#handshake first")
       end
-      packet = @socket.gets("\xff")
+      packet = gets("\xff")
       return nil if !packet
       if !(packet =~ /\A\x00(.*)\xff\z/nm)
         raise(WebSocket::Error, "input must start with \\x00 and end with \\xff")
@@ -152,7 +164,7 @@ class WebSocket
     
     def read_header()
       @header = {}
-      @socket.each_line() do |line|
+      while line = gets()
         line = line.chomp()
         break if line.empty?
         if !(line =~ /\A(\S+): (.*)\z/n)
@@ -166,6 +178,25 @@ class WebSocket
       if @header["Connection"] != "Upgrade"
         raise(WebSocket::Error, "invalid Connection: " + @header["Connection"])
       end
+    end
+    
+    def gets(rs = $/)
+      line = @socket.gets(rs)
+      $stderr.printf("recv> %p\n" % line) if WebSocket.debug
+      return line
+    end
+    
+    def write(data)
+      if WebSocket.debug
+        data.scan(/\G(.*?(\n|\z))/n) do
+          $stderr.printf("send> %p\n" % $&) if !$&.empty?
+        end
+      end
+      @socket.write(data)
+    end
+    
+    def flush()
+      @socket.flush()
     end
     
 end
