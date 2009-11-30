@@ -98,26 +98,22 @@ class WebSocket
     
     attr_reader(:server, :header, :path)
     
-    REQUIRED_HEADER_KEYS = ["Upgrade", "Connection", "WebSocket-Origin", "WebSocket-Location"]
-    
     def handshake(status = nil, header = {})
       if @handshaked
         raise(WebSocket::Error, "handshake has already been done")
       end
       status ||= "101 Web Socket Protocol Handshake"
       def_header = {
-        "Upgrade" => "WebSocket",
-        "Connection" => "Upgrade",
-        "WebSocket-Origin" => origin,
-        "WebSocket-Location" => @server.uri + @path,
+        "WebSocket-Origin" => self.origin,
+        "WebSocket-Location" => self.location,
       }
       header = def_header.merge(header)
-      # It seems 4 required header entries must appear in this order, otherwise connection with
-      # Chrome WebSocket implementation fails.
-      keys = REQUIRED_HEADER_KEYS + (header.keys - REQUIRED_HEADER_KEYS)
-      header_str = keys.map(){ |k| "#{k}: #{header[k]}\r\n" }.join("")
+      header_str = header.map(){ |k, v| "#{k}: #{v}\r\n" }.join("")
+      # Note that Upgrade and Connection must appear in this order.
       write(
         "HTTP/1.1 #{status}\r\n" +
+        "Upgrade: WebSocket\r\n" +
+        "Connection: Upgrade\r\n" +
         "#{header_str}\r\n")
       flush()
       @handshaked = true
@@ -154,6 +150,10 @@ class WebSocket
     
     def origin
       return @header["Origin"]
+    end
+    
+    def location
+      return "ws://#{self.host}#{@path}"
     end
     
     def close()
