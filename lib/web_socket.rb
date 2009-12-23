@@ -57,8 +57,12 @@ class WebSocket
         @path = $1
         read_header()
         if !@server.accepted_origin?(self.origin)
-          raise(WebSocket::Error, "unaccepted origin: %s (server.accepted_domains = %p)" %
-            [self.origin, @server.accepted_domains])
+          raise(WebSocket::Error,
+            ("Unaccepted origin: %s (server.accepted_domains = %p)\n\n" +
+              "To accept this origin, write e.g. \n" +
+              "  WebSocketServer.new(\"ws://...\", :accepted_domains => [%p]), or\n" +
+              "  WebSocketServer.new(\"ws://...\", :accepted_domains => [\"*\"])\n") %
+            [self.origin, @server.accepted_domains, @server.origin_to_domain(self.origin)])
         end
         @handshaked = false
         
@@ -240,8 +244,12 @@ class WebSocketServer
     end
     
     def accepted_origin?(origin)
-      domain = URI.parse(origin).host
+      domain = origin_to_domain(origin)
       return @accepted_domains.any?(){ |d| File.fnmatch(d, domain) }
+    end
+    
+    def origin_to_domain(origin)
+      return origin == "file://" ? "file://" : URI.parse(origin).host
     end
     
     def create_web_socket(socket)
@@ -273,6 +281,7 @@ class WebSocketServer
         '"http://www.macromedia.com/xml/dtds/cross-domain-policy.dtd">')
       socket.puts('<cross-domain-policy>')
       for domain in @accepted_domains
+        next if domain == "file://"
         socket.puts("<allow-access-from domain=\"#{domain}\" to-ports=\"#{@port}\"/>")
       end
       socket.puts('</cross-domain-policy>')
