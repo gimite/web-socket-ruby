@@ -1,16 +1,21 @@
 # Copyright: Hiroshi Ichikawa <http://gimite.net/en/>
 # Lincense: New BSD Lincense
 
-$LOAD_PATH << "./lib"
+$LOAD_PATH << File.dirname(__FILE__) + "/../lib"
 require "web_socket"
 require "thread"
 
 Thread.abort_on_exception = true
 
+if ARGV.size != 2
+  $stderr.puts("Usage: ruby sample/chat_server.rb ACCEPTED_DOMAIN PORT")
+  exit(1)
+end
+
 server = WebSocketServer.new(
-  ARGV[0] || "ws://localhost:10081",
-  :host => "0.0.0.0")
-puts("Ready")
+  :accepted_domains => [ARGV[0]],
+  :port => ARGV[1].to_i())
+puts("Server is running at port %d" % server.port)
 connections = []
 history = [nil] * 20
 

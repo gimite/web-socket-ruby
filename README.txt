@@ -1,7 +1,7 @@
 * How to run sample
 
 - Run sample Web Socket server (echo server) with:
-  $ ruby samples/echo_server.rb ws://localhost:10081
+  $ ruby samples/echo_server.rb localhost 10081
 
 - Run sample Web Socket client and type something:
   $ ruby samples/stdio_client.rb ws://localhost:10081
@@ -16,7 +16,7 @@
 Server:
 
   # Runs the server at port 10081. It allows connections whose origin is example.com.
-  server = WebSocketServer.new("ws://example.com:10081", :accepted_domains => ["example.com"])
+  server = WebSocketServer.new(:port => 10081, :accepted_domains => ["example.com"])
   server.run() do |ws|
     # The block is called for each connection.
     # Checks requested path.
@@ -48,7 +48,7 @@ Client:
 
 * Tips: JavaScript client implementation
 
-No browser natively supports Web Socket so far as far as I know. For now, you can use an implementation using Flash:
+Google Chrome Dev Channel natively supports Web Socket. For other browsers, you can use an implementation using Flash:
 http://github.com/gimite/web-socket-js/tree/master
 
 

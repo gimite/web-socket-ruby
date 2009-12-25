@@ -60,8 +60,8 @@ class WebSocket
           raise(WebSocket::Error,
             ("Unaccepted origin: %s (server.accepted_domains = %p)\n\n" +
               "To accept this origin, write e.g. \n" +
-              "  WebSocketServer.new(\"ws://...\", :accepted_domains => [%p]), or\n" +
-              "  WebSocketServer.new(\"ws://...\", :accepted_domains => [\"*\"])\n") %
+              "  WebSocketServer.new(..., :accepted_domains => [%p]), or\n" +
+              "  WebSocketServer.new(..., :accepted_domains => [\"*\"])\n") %
             [self.origin, @server.accepted_domains, @server.origin_to_domain(self.origin)])
         end
         @handshaked = false
@@ -208,10 +208,19 @@ end
 
 class WebSocketServer
     
-    def initialize(uri, params = {})
-      @uri = uri.is_a?(String) ? URI.parse(uri) : uri
-      @port = params[:port] || @uri.port || 80
-      @accepted_domains = params[:accepted_domains] || [@uri.host]
+    def initialize(params_or_uri, params = nil)
+      if params
+        uri = params_or_uri.is_a?(String) ? URI.parse(params_or_uri) : params_or_uri
+        params[:port] ||= uri.port
+        params[:accepted_domains] ||= [uri.host]
+      else
+        params = params_or_uri
+      end
+      @port = params[:port] || 80
+      @accepted_domains = params[:accepted_domains]
+      if !@accepted_domains
+        raise(ArgumentError, "params[:accepted_domains] is required")
+      end
       if params[:host]
         @tcp_server = TCPServer.open(params[:host], @port)
       else
@@ -219,7 +228,7 @@ class WebSocketServer
       end
     end
     
-    attr_reader(:tcp_server, :uri, :port, :accepted_domains)
+    attr_reader(:tcp_server, :port, :accepted_domains)
     
     def run(&block)
       while true
@@ -293,45 +302,50 @@ end
 
 if __FILE__ == $0
   Thread.abort_on_exception = true
-  case ARGV[0]
+  
+  if ARGV[0] == "server" && ARGV.size == 3
     
-    when "server"
-      server = WebSocketServer.new(
-        ARGV[1] || "ws://localhost:10081",
-        :host => "0.0.0.0")
-      puts("Ready")
-      server.run() do |ws|
-        puts("Connection accepted")
-        puts("Path: #{ws.path}, Origin: #{ws.origin}")
-        if ws.path == "/"
-          ws.handshake()
-          while data = ws.receive()
-            printf("Received: %p\n", data)
-            ws.send(data)
-            printf("Sent: %p\n", data)
-          end
-        else
-          ws.handshake("404 Not Found")
-        end
-        puts("Connection closed")
-      end
-    
-    when "client"
-      client = WebSocket.new(ARGV[1] || "ws://localhost:10081/")
-      puts("Ready")
-      Thread.new() do
-        while data = client.receive()
+    server = WebSocketServer.new(
+      :accepted_domains => [ARGV[1]],
+      :port => ARGV[2].to_i())
+    puts("Server is running at port %d" % server.port)
+    server.run() do |ws|
+      puts("Connection accepted")
+      puts("Path: #{ws.path}, Origin: #{ws.origin}")
+      if ws.path == "/"
+        ws.handshake()
+        while data = ws.receive()
           printf("Received: %p\n", data)
+          ws.send(data)
+          printf("Sent: %p\n", data)
         end
+      else
+        ws.handshake("404 Not Found")
       end
-      $stdin.each_line() do |line|
-        data = line.chomp()
-        client.send(data)
-        printf("Sent: %p\n", data)
-      end
+      puts("Connection closed")
+    end
     
-    else
-      $stderr.puts("Usage: ruby web_socket.rb [server|client]")
+  elsif ARGV[0] == "client" && ARGV.size == 2
+    
+    client = WebSocket.new(ARGV[1])
+    puts("Connected")
+    Thread.new() do
+      while data = client.receive()
+        printf("Received: %p\n", data)
+      end
+    end
+    $stdin.each_line() do |line|
+      data = line.chomp()
+      client.send(data)
+      printf("Sent: %p\n", data)
+    end
+    
+  else
+    
+    $stderr.puts("Usage:")
+    $stderr.puts("  ruby web_socket.rb server ACCEPTED_DOMAIN PORT")
+    $stderr.puts("  ruby web_socket.rb client ws://HOST:PORT/")
+    exit(1)
     
   end
 end
