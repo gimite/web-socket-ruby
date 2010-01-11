@@ -8,6 +8,14 @@ require "uri"
 
 if RUBY_VERSION < "1.9.0"
   
+  class Encoding
+      
+      def self.const_missing(name)
+        return Encoding.new()
+      end
+      
+  end
+  
   class String
       
       def force_encoding(encoding)
