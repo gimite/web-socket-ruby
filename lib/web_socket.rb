@@ -1,6 +1,6 @@
 # Copyright: Hiroshi Ichikawa <http://gimite.net/en/>
 # Lincense: New BSD Lincense
-# Reference: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-31
+# Reference: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol
 
 require "socket"
 require "uri"
