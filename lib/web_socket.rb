@@ -6,41 +6,6 @@ require "socket"
 require "uri"
 
 
-if RUBY_VERSION < "1.9.0"
-  
-  class Encoding
-      
-      def self.const_missing(name)
-        return Encoding.new()
-      end
-      
-  end
-  
-  class String
-      
-      def force_encoding(encoding)
-        return self
-      end
-      
-      def ord
-        return self[0]
-      end
-      
-      alias bytesize size
-      
-  end
-  
-  class Integer
-      
-      def ord
-        return self
-      end
-      
-  end
-  
-end
-
-
 class WebSocket
     
     class << self
@@ -135,7 +100,7 @@ class WebSocket
       if !@handshaked
         raise(WebSocket::Error, "call WebSocket\#handshake first")
       end
-      data = data.dup().force_encoding("ASCII-8BIT")
+      data = force_encoding(data.dup(), "ASCII-8BIT")
       write("\x00#{data}\xff")
       flush()
     end
@@ -149,7 +114,7 @@ class WebSocket
       if !(packet =~ /\A\x00(.*)\xff\z/nm)
         raise(WebSocket::Error, "input must start with \\x00 and end with \\xff")
       end
-      return $1.force_encoding("UTF-8")
+      return force_encoding($1, "UTF-8")
     end
     
     def tcp_socket
@@ -209,6 +174,14 @@ class WebSocket
     
     def flush()
       @socket.flush()
+    end
+    
+    def force_encoding(str, encoding)
+      if str.respond_to?(:force_encoding)
+        return str.force_encoding(encoding)
+      else
+        return str
+      end
     end
     
 end
