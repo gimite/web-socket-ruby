@@ -5,7 +5,7 @@
 require "socket"
 require "uri"
 require "digest/md5"
-require 'openssl'
+require "openssl"
 
 
 class WebSocket
@@ -51,16 +51,22 @@ class WebSocket
 
         uri = arg.is_a?(String) ? URI.parse(arg) : arg
 
-        raise(WebSocket::Error, "unsupported scheme: #{uri.scheme}") unless ["ws","wss"].include?(uri.scheme)
+        if uri.scheme == "ws"
+          default_port = 80
+        elsif uri.scheme = "wss"
+          default_port = 443
+        else
+          raise(WebSocket::Error, "unsupported scheme: #{uri.scheme}")
+        end
 
         @path = (uri.path.empty? ? "/" : uri.path) + (uri.query ? "?" + uri.query : "")
-        host = uri.host + (uri.port == 80 ? "" : ":#{uri.port}")
+        host = uri.host + (uri.port == default_port ? "" : ":#{uri.port}")
         origin = params[:origin] || "http://#{uri.host}"
         key1 = generate_key()
         key2 = generate_key()
         key3 = generate_key3()
 
-        socket = TCPSocket.new(uri.host, uri.port || 80)
+        socket = TCPSocket.new(uri.host, uri.port || default_port)
 
         if uri.scheme == "ws"
           @socket = socket
@@ -257,8 +263,8 @@ class WebSocket
       ssl_context = OpenSSL::SSL::SSLContext.new()
       ssl_socket = OpenSSL::SSL::SSLSocket.new(socket, ssl_context)
       ssl_socket.sync_close = true
-      ssl_socket.connect
-      ssl_socket
+      ssl_socket.connect()
+      return ssl_socket
     end
 
 end
