@@ -15,9 +15,11 @@ Thread.new() do
   while data = client.receive()
     printf("Received: %p\n", data)
   end
+  exit()
 end
 $stdin.each_line() do |line|
   data = line.chomp()
   client.send(data)
   printf("Sent: %p\n", data)
 end
+client.close()

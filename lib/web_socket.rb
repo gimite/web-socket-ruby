@@ -104,6 +104,7 @@ class WebSocket
       end
       @received = []
       @buffer = ""
+      @closing_started = false
     end
 
     attr_reader(:server, :header, :path)
@@ -146,10 +147,18 @@ class WebSocket
       end
       packet = gets("\xff")
       return nil if !packet
-      if !(packet =~ /\A\x00(.*)\xff\z/nm)
-        raise(WebSocket::Error, "input must start with \\x00 and end with \\xff")
+      if packet =~ /\A\x00(.*)\xff\z/nm
+        return force_encoding($1, "UTF-8")
+      elsif packet == "\xff" && read(1) == "\x00" # closing
+        if @server
+          @socket.close()
+        else
+          close()
+        end
+        return nil
+      else
+        raise(WebSocket::Error, "input must be either '\\x00...\\xff' or '\\xff\\x00'")
       end
-      return force_encoding($1, "UTF-8")
     end
 
     def tcp_socket
@@ -167,8 +176,16 @@ class WebSocket
     def location
       return "ws://#{self.host}#{@path}"
     end
-
+    
+    # Does closing handshake.
     def close()
+      return if @closing_started
+      write("\xff\x00")
+      @socket.close() if !@server
+      @closing_started = true
+    end
+    
+    def close_socket()
       @socket.close()
     end
 
@@ -304,7 +321,7 @@ class WebSocketServer
             print_backtrace(ex)
           ensure
             begin
-              ws.close() if ws
+              ws.close_socket() if ws
             rescue
             end
           end
