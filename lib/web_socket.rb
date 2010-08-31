@@ -31,7 +31,7 @@ class WebSocket
         end
         @path = $1
         read_header()
-        if !@header["Sec-WebSocket-Key1"] || !@header["Sec-WebSocket-Key2"]
+        if !@header["sec-websocket-key1"] || !@header["sec-websocket-key2"]
           raise(WebSocket::Error,
             "Client speaks old WebSocket protocol, " +
             "missing header Sec-WebSocket-Key1 and Sec-WebSocket-Key2")
@@ -89,9 +89,9 @@ class WebSocket
         line = gets().chomp()
         raise(WebSocket::Error, "bad response: #{line}") if !(line =~ /\AHTTP\/1.1 101 /n)
         read_header()
-        if @header["Sec-WebSocket-Origin"] != origin
+        if (@header["sec-websocket-origin"] || "").downcase() != origin.downcase()
           raise(WebSocket::Error,
-            "origin doesn't match: '#{@header["WebSocket-Origin"]}' != '#{origin}'")
+            "origin doesn't match: '#{@header["sec-websocket-origin"]}' != '#{origin}'")
         end
         reply_digest = read(16)
         expected_digest = security_digest(key1, key2, key3)
@@ -166,11 +166,11 @@ class WebSocket
     end
 
     def host
-      return @header["Host"]
+      return @header["host"]
     end
 
     def origin
-      return @header["Origin"]
+      return @header["origin"]
     end
 
     def location
@@ -202,12 +202,13 @@ class WebSocket
           raise(WebSocket::Error, "invalid request: #{line}")
         end
         @header[$1] = $2
+        @header[$1.downcase()] = $2
       end
-      if @header["Upgrade"] != "WebSocket"
-        raise(WebSocket::Error, "invalid Upgrade: " + @header["Upgrade"])
+      if !(@header["upgrade"] =~ /\AWebSocket\z/i)
+        raise(WebSocket::Error, "invalid Upgrade: " + @header["upgrade"])
       end
-      if @header["Connection"] != "Upgrade"
-        raise(WebSocket::Error, "invalid Connection: " + @header["Connection"])
+      if !(@header["connection"] =~ /\AUpgrade\z/i)
+        raise(WebSocket::Error, "invalid Connection: " + @header["connection"])
       end
     end
 
