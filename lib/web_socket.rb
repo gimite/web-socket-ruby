@@ -31,12 +31,12 @@ class WebSocket
         end
         @path = $1
         read_header()
-        if !@header["sec-websocket-key1"] || !@header["sec-websocket-key2"]
-          raise(WebSocket::Error,
-            "Client speaks old WebSocket protocol, " +
-            "missing header Sec-WebSocket-Key1 and Sec-WebSocket-Key2")
+        if @header["Sec-WebSocket-Key1"] && @header["Sec-WebSocket-Key2"]
+          @key3 = read(8)
+        else
+          # Old Draft 75 protocol
+          @key3 = nil
         end
-        @key3 = read(8)
         if !@server.accepted_origin?(self.origin)
           raise(WebSocket::Error,
             ("Unaccepted origin: %s (server.accepted_domains = %p)\n\n" +
@@ -114,14 +114,19 @@ class WebSocket
         raise(WebSocket::Error, "handshake has already been done")
       end
       status ||= "101 Web Socket Protocol Handshake"
+      sec_prefix = @key3 ? "Sec-" : ""
       def_header = {
-        "Sec-WebSocket-Origin" => self.origin,
-        "Sec-WebSocket-Location" => self.location,
+        "#{sec_prefix}WebSocket-Origin" => self.origin,
+        "#{sec_prefix}WebSocket-Location" => self.location,
       }
       header = def_header.merge(header)
       header_str = header.map(){ |k, v| "#{k}: #{v}\r\n" }.join("")
-      digest = security_digest(
-        @header["Sec-WebSocket-Key1"], @header["Sec-WebSocket-Key2"], @key3)
+      if @key3
+        digest = security_digest(
+          @header["Sec-WebSocket-Key1"], @header["Sec-WebSocket-Key2"], @key3)
+      else
+        digest = ""
+      end
       # Note that Upgrade and Connection must appear in this order.
       write(
         "HTTP/1.1 #{status}\r\n" +
