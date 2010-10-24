@@ -31,7 +31,7 @@ class WebSocket
         end
         @path = $1
         read_header()
-        if @header["Sec-WebSocket-Key1"] && @header["Sec-WebSocket-Key2"]
+        if @header["sec-websocket-key1"] && @header["sec-websocket-key2"]
           @key3 = read(8)
         else
           # Old Draft 75 protocol
