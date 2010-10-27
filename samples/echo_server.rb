@@ -5,6 +5,7 @@ $LOAD_PATH << File.dirname(__FILE__) + "/../lib"
 require "web_socket"
 
 Thread.abort_on_exception = true
+# WebSocket.debug = true
 
 if ARGV.size != 2
   $stderr.puts("Usage: ruby sample/echo_server.rb ACCEPTED_DOMAIN PORT")

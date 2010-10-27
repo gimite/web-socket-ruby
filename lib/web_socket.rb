@@ -345,7 +345,11 @@ class WebSocketServer
     end
 
     def origin_to_domain(origin)
-      return origin == "file://" ? "file://" : URI.parse(origin).host
+      if origin == "null" || origin == "file://"  # local file
+        return "null"
+      else
+        return URI.parse(origin).host
+      end
     end
 
     def create_web_socket(socket)
