@@ -46,6 +46,12 @@ Client:
   puts(data)
 
 
+* Supported WebSocket protocol versions
+
+WebSocketServer class (server) accepts version hixie-75, hixie-76, hybi-07, hybi-10.
+WebSocket class (client) speaks version hixie-76.
+
+
 * Tips: JavaScript client implementation
 
 Google Chrome Dev Channel natively supports Web Socket. For other browsers, you can use an implementation using Flash:

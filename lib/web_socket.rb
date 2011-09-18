@@ -1,11 +1,17 @@
 # Copyright: Hiroshi Ichikawa <http://gimite.net/en/>
 # Lincense: New BSD Lincense
-# Reference: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol
+# Reference: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-75
+# Reference: http://tools.ietf.org/html/draft-hixie-thewebsocketprotocol-76
+# Reference: http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-07
+# Reference: http://tools.ietf.org/html/draft-ietf-hybi-thewebsocketprotocol-10
 
+require "base64"
 require "socket"
 require "uri"
 require "digest/md5"
+require "digest/sha1"
 require "openssl"
+require "stringio"
 
 
 class WebSocket
@@ -19,6 +25,14 @@ class WebSocket
     class Error < RuntimeError
 
     end
+    
+    WEB_SOCKET_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+    OPCODE_CONTINUATION = 0x00
+    OPCODE_TEXT = 0x01
+    OPCODE_BINARY = 0x02
+    OPCODE_CLOSE = 0x08
+    OPCODE_PING = 0x09
+    OPCODE_PONG = 0x0a
 
     def initialize(arg, params = {})
       if params[:server] # server
@@ -31,10 +45,14 @@ class WebSocket
         end
         @path = $1
         read_header()
-        if @header["sec-websocket-key1"] && @header["sec-websocket-key2"]
+        if @header["sec-websocket-version"]
+          @web_socket_version = @header["sec-websocket-version"]
+          @key3 = nil
+        elsif @header["sec-websocket-key1"] && @header["sec-websocket-key2"]
+          @web_socket_version = "hixie-76"
           @key3 = read(8)
         else
-          # Old Draft 75 protocol
+          @web_socket_version = "hixie-75"
           @key3 = nil
         end
         if !@server.accepted_origin?(self.origin)
@@ -48,7 +66,8 @@ class WebSocket
         @handshaked = false
 
       else # client
-
+        
+        @web_socket_version = "hixie-76"
         uri = arg.is_a?(String) ? URI.parse(arg) : arg
 
         if uri.scheme == "ws"
@@ -94,7 +113,7 @@ class WebSocket
             "origin doesn't match: '#{@header["sec-websocket-origin"]}' != '#{origin}'")
         end
         reply_digest = read(16)
-        expected_digest = security_digest(key1, key2, key3)
+        expected_digest = hixie_76_security_digest(key1, key2, key3)
         if reply_digest != expected_digest
           raise(WebSocket::Error,
             "security digest doesn't match: %p != %p" % [reply_digest, expected_digest])
@@ -113,26 +132,30 @@ class WebSocket
       if @handshaked
         raise(WebSocket::Error, "handshake has already been done")
       end
-      status ||= "101 Web Socket Protocol Handshake"
-      sec_prefix = @key3 ? "Sec-" : ""
-      def_header = {
-        "#{sec_prefix}WebSocket-Origin" => self.origin,
-        "#{sec_prefix}WebSocket-Location" => self.location,
-      }
+      status ||= "101 Switching Protocols"
+      def_header = {}
+      case @web_socket_version
+        when "hixie-75"
+          def_header["WebSocket-Origin"] = self.origin
+          def_header["WebSocket-Location"] = self.location
+          extra_bytes = ""
+        when "hixie-76"
+          def_header["Sec-WebSocket-Origin"] = self.origin
+          def_header["Sec-WebSocket-Location"] = self.location
+          extra_bytes = hixie_76_security_digest(
+            @header["Sec-WebSocket-Key1"], @header["Sec-WebSocket-Key2"], @key3)
+        else
+          def_header["Sec-WebSocket-Accept"] = security_digest(@header["sec-websocket-key"])
+          extra_bytes = ""
+      end
       header = def_header.merge(header)
       header_str = header.map(){ |k, v| "#{k}: #{v}\r\n" }.join("")
-      if @key3
-        digest = security_digest(
-          @header["Sec-WebSocket-Key1"], @header["Sec-WebSocket-Key2"], @key3)
-      else
-        digest = ""
-      end
       # Note that Upgrade and Connection must appear in this order.
       write(
         "HTTP/1.1 #{status}\r\n" +
-        "Upgrade: WebSocket\r\n" +
+        "Upgrade: websocket\r\n" +
         "Connection: Upgrade\r\n" +
-        "#{header_str}\r\n#{digest}")
+        "#{header_str}\r\n#{extra_bytes}")
       flush()
       @handshaked = true
     end
@@ -141,31 +164,74 @@ class WebSocket
       if !@handshaked
         raise(WebSocket::Error, "call WebSocket\#handshake first")
       end
-      data = force_encoding(data.dup(), "ASCII-8BIT")
-      write("\x00#{data}\xff")
-      flush()
+      case @web_socket_version
+        when "hixie-75", "hixie-76"
+          data = force_encoding(data.dup(), "ASCII-8BIT")
+          write("\x00#{data}\xff")
+          flush()
+        else
+          send_frame(OPCODE_TEXT, data, !@server)
+      end
     end
-
+    
     def receive()
       if !@handshaked
         raise(WebSocket::Error, "call WebSocket\#handshake first")
       end
-      packet = gets("\xff")
-      return nil if !packet
-      if packet =~ /\A\x00(.*)\xff\z/nm
-        return force_encoding($1, "UTF-8")
-      elsif packet == "\xff" && read(1) == "\x00" # closing
-        if @server
-          @socket.close()
+      case @web_socket_version
+        
+        when "hixie-75", "hixie-76"
+          packet = gets("\xff")
+          return nil if !packet
+          if packet =~ /\A\x00(.*)\xff\z/nm
+            return force_encoding($1, "UTF-8")
+          elsif packet == "\xff" && read(1) == "\x00" # closing
+            close(true)
+            return nil
+          else
+            raise(WebSocket::Error, "input must be either '\\x00...\\xff' or '\\xff\\x00'")
+          end
+        
         else
-          close()
-        end
-        return nil
-      else
-        raise(WebSocket::Error, "input must be either '\\x00...\\xff' or '\\xff\\x00'")
+          bytes = read(2).unpack("C*")
+          fin = (bytes[0] & 0x80) != 0
+          opcode = bytes[0] & 0x0f
+          mask = (bytes[1] & 0x80) != 0
+          plength = bytes[1] & 0x7f
+          if plength == 126
+            bytes = read(2)
+            plength = bytes.unpack("n")[0]
+          elsif plength == 127
+            bytes = read(8)
+            (high, low) = bytes.unpack("NN")
+            plength = high * (2 ** 32) + low
+          end
+          if @server && !mask
+            # Masking is required.
+            @socket.close()
+            raise(WebSocket::Error, "received unmasked data")
+          end
+          mask_key = mask ? read(4).unpack("C*") : nil
+          payload = read(plength)
+          payload = apply_mask(payload, mask_key) if mask
+          case opcode
+            when OPCODE_TEXT
+              return force_encoding(payload, "UTF-8")
+            when OPCODE_BINARY
+              raise(WebSocket::Error, "received binary data, which is not supported")
+            when OPCODE_CLOSE
+              close(true)
+              return nil
+            when OPCODE_PING
+              raise(WebSocket::Error, "received ping, which is not supported")
+            when OPCODE_PONG
+            else
+              raise(WebSocket::Error, "received unknown opcode: %d" % opcode)
+          end
+        
       end
     end
-
+    
     def tcp_socket
       return @socket
     end
@@ -175,7 +241,17 @@ class WebSocket
     end
 
     def origin
-      return @header["origin"]
+      case @web_socket_version
+        when "7", "8"
+          name = "sec-websocket-origin"
+        else
+          name = "origin"
+      end
+      if @header[name]
+        return @header[name]
+      else
+        raise(WebSocket::Error, "%s header is missing" % name)
+      end
     end
 
     def location
@@ -183,10 +259,16 @@ class WebSocket
     end
     
     # Does closing handshake.
-    def close()
-      return if @closing_started
-      write("\xff\x00")
-      @socket.close() if !@server
+    def close(by_peer = false)
+      if !@closing_started
+        case @web_socket_version
+          when "hixie-75", "hixie-76"
+            write("\xff\x00")
+          else
+            send_frame(OPCODE_CLOSE, "", false)
+        end
+      end
+      @socket.close() if by_peer
       @closing_started = true
     end
     
@@ -217,6 +299,30 @@ class WebSocket
       end
     end
 
+    def send_frame(opcode, payload, mask)
+      payload = force_encoding(payload.dup(), "ASCII-8BIT")
+      # Setting StringIO's encoding to ASCII-8BIT.
+      buffer = StringIO.new("".force_encoding("ASCII-8BIT"))
+      write_byte(buffer, 0x80 | opcode)
+      masked_byte = mask ? 0x80 : 0x00
+      if payload.bytesize <= 125
+        write_byte(buffer, masked_byte | payload.bytesize)
+      elsif payload.bytesize < 2 ** 16
+        write_byte(buffer, masked_byte | 126)
+        buffer.write([payload.bytesize].pack("n"))
+      else
+        write_byte(buffer, masked_byte | 127)
+        buffer.write([payload.bytesize / (2 ** 32), payload.bytesize % (2 ** 32)].pack("NN"))
+      end
+      if mask
+        mask_key = Array.new(4){ rand(256) }.pack("C")
+        buffer.write(mask_key)
+        payload = apply_mask(payload, mask_key)
+      end
+      buffer.write(payload)
+      write(buffer.string)
+    end
+
     def gets(rs = $/)
       line = @socket.gets(rs)
       $stderr.printf("recv> %p\n", line) if WebSocket.debug
@@ -241,11 +347,28 @@ class WebSocket
     def flush()
       @socket.flush()
     end
+    
+    def write_byte(buffer, byte)
+      buffer.write([byte].pack("C"))
+    end
+    
+    def security_digest(key)
+      return Base64.encode64(Digest::SHA1.digest(key + WEB_SOCKET_GUID)).gsub(/\n/, "")
+    end
 
-    def security_digest(key1, key2, key3)
+    def hixie_76_security_digest(key1, key2, key3)
       bytes1 = websocket_key_to_bytes(key1)
       bytes2 = websocket_key_to_bytes(key2)
       return Digest::MD5.digest(bytes1 + bytes2 + key3)
+    end
+
+    def apply_mask(payload, mask_key)
+      orig_bytes = payload.unpack("C*")
+      new_bytes = []
+      orig_bytes.each_with_index() do |b, i|
+        new_bytes.push(b ^ mask_key[i % 4])
+      end
+      return new_bytes.pack("C*")
     end
 
     def generate_key()
