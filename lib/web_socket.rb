@@ -302,7 +302,7 @@ class WebSocket
     def send_frame(opcode, payload, mask)
       payload = force_encoding(payload.dup(), "ASCII-8BIT")
       # Setting StringIO's encoding to ASCII-8BIT.
-      buffer = StringIO.new("".force_encoding("ASCII-8BIT"))
+      buffer = StringIO.new(force_encoding("", "ASCII-8BIT"))
       write_byte(buffer, 0x80 | opcode)
       masked_byte = mask ? 0x80 : 0x00
       if payload.bytesize <= 125
