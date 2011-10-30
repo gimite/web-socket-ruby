@@ -324,8 +324,8 @@ class WebSocket
         buffer.write([payload.bytesize / (2 ** 32), payload.bytesize % (2 ** 32)].pack("NN"))
       end
       if mask
-        mask_key = Array.new(4){ rand(256) }.pack("C")
-        buffer.write(mask_key)
+        mask_key = Array.new(4){ rand(256) }
+        buffer.write(mask_key.pack("C*"))
         payload = apply_mask(payload, mask_key)
       end
       buffer.write(payload)
