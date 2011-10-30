@@ -186,47 +186,51 @@ class WebSocket
           if packet =~ /\A\x00(.*)\xff\z/nm
             return force_encoding($1, "UTF-8")
           elsif packet == "\xff" && read(1) == "\x00" # closing
-            close(true)
+            close(1005, "", :peer)
             return nil
           else
             raise(WebSocket::Error, "input must be either '\\x00...\\xff' or '\\xff\\x00'")
           end
         
         else
-          bytes = read(2).unpack("C*")
-          fin = (bytes[0] & 0x80) != 0
-          opcode = bytes[0] & 0x0f
-          mask = (bytes[1] & 0x80) != 0
-          plength = bytes[1] & 0x7f
-          if plength == 126
-            bytes = read(2)
-            plength = bytes.unpack("n")[0]
-          elsif plength == 127
-            bytes = read(8)
-            (high, low) = bytes.unpack("NN")
-            plength = high * (2 ** 32) + low
-          end
-          if @server && !mask
-            # Masking is required.
-            @socket.close()
-            raise(WebSocket::Error, "received unmasked data")
-          end
-          mask_key = mask ? read(4).unpack("C*") : nil
-          payload = read(plength)
-          payload = apply_mask(payload, mask_key) if mask
-          case opcode
-            when OPCODE_TEXT
-              return force_encoding(payload, "UTF-8")
-            when OPCODE_BINARY
-              raise(WebSocket::Error, "received binary data, which is not supported")
-            when OPCODE_CLOSE
-              close(true)
-              return nil
-            when OPCODE_PING
-              raise(WebSocket::Error, "received ping, which is not supported")
-            when OPCODE_PONG
-            else
-              raise(WebSocket::Error, "received unknown opcode: %d" % opcode)
+          begin
+            bytes = read(2).unpack("C*")
+            fin = (bytes[0] & 0x80) != 0
+            opcode = bytes[0] & 0x0f
+            mask = (bytes[1] & 0x80) != 0
+            plength = bytes[1] & 0x7f
+            if plength == 126
+              bytes = read(2)
+              plength = bytes.unpack("n")[0]
+            elsif plength == 127
+              bytes = read(8)
+              (high, low) = bytes.unpack("NN")
+              plength = high * (2 ** 32) + low
+            end
+            if @server && !mask
+              # Masking is required.
+              @socket.close()
+              raise(WebSocket::Error, "received unmasked data")
+            end
+            mask_key = mask ? read(4).unpack("C*") : nil
+            payload = read(plength)
+            payload = apply_mask(payload, mask_key) if mask
+            case opcode
+              when OPCODE_TEXT
+                return force_encoding(payload, "UTF-8")
+              when OPCODE_BINARY
+                raise(WebSocket::Error, "received binary data, which is not supported")
+              when OPCODE_CLOSE
+                close(1005, "", :peer)
+                return nil
+              when OPCODE_PING
+                raise(WebSocket::Error, "received ping, which is not supported")
+              when OPCODE_PONG
+              else
+                raise(WebSocket::Error, "received unknown opcode: %d" % opcode)
+            end
+          rescue EOFError
+            return nil
           end
         
       end
@@ -259,16 +263,21 @@ class WebSocket
     end
     
     # Does closing handshake.
-    def close(by_peer = false)
+    def close(code = 1005, reason = "", origin = :self)
       if !@closing_started
         case @web_socket_version
           when "hixie-75", "hixie-76"
             write("\xff\x00")
           else
-            send_frame(OPCODE_CLOSE, "", false)
+            if code == 1005
+              payload = ""
+            else
+              payload = [code].pack("n") + force_encoding(reason.dup(), "ASCII-8BIT")
+            end
+            send_frame(OPCODE_CLOSE, payload, false)
         end
       end
-      @socket.close() if by_peer
+      @socket.close() if origin == :peer
       @closing_started = true
     end
     
@@ -332,7 +341,11 @@ class WebSocket
     def read(num_bytes)
       str = @socket.read(num_bytes)
       $stderr.printf("recv> %p\n", str) if WebSocket.debug
-      return str
+      if str && str.bytesize == num_bytes
+        return str
+      else
+        raise(EOFError)
+      end
     end
 
     def write(data)
