@@ -79,7 +79,7 @@ class WebSocket
         end
 
         @path = (uri.path.empty? ? "/" : uri.path) + (uri.query ? "?" + uri.query : "")
-        host = uri.host + (uri.port == default_port ? "" : ":#{uri.port}")
+        host = uri.host + ((uri.port.nil? || uri.port == default_port) ? "" : ":#{uri.port}")
         origin = params[:origin] || "http://#{uri.host}"
         key1 = generate_key()
         key2 = generate_key()
