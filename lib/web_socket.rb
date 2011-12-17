@@ -300,10 +300,16 @@ class WebSocket
         @header[$1] = $2
         @header[$1.downcase()] = $2
       end
+      if !@header["upgrade"]
+        raise(WebSocket::Error, "Upgrade header is missing")
+      end
       if !(@header["upgrade"] =~ /\AWebSocket\z/i)
         raise(WebSocket::Error, "invalid Upgrade: " + @header["upgrade"])
       end
-      if !(@header["connection"] =~ /\AUpgrade\z/i)
+      if !@header["connection"]
+        raise(WebSocket::Error, "Connection header is missing")
+      end
+      if @header["connection"].split(/,/).grep(/\A\s*Upgrade\s*\z/i).empty?
         raise(WebSocket::Error, "invalid Connection: " + @header["connection"])
       end
     end
