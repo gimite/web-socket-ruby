@@ -1,3 +1,8 @@
+HTML5 Web Socket server/client implementation in Ruby.
+
+For server, em-websocket ( https://github.com/igrigorik/em-websocket ) may be a better choice, especially if you want to use EventMachine.
+
+
 * How to run sample
 
 - Run sample Web Socket server (echo server) with:
@@ -56,6 +61,13 @@ WebSocket class (client) speaks version hixie-76.
 
 Google Chrome Dev Channel natively supports Web Socket. For other browsers, you can use an implementation using Flash:
 http://github.com/gimite/web-socket-js/tree/master
+
+
+* WebSocket protocol versions
+
+The server supports the protocol defined in RFC 6455, draft versions hixie-75 and hixie-76.
+
+The client speaks draft version hixie-76.
 
 
 * License
