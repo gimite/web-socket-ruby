@@ -39,9 +39,13 @@ class WebSocket
 
         @server = params[:server]
         @socket = arg
-        line = gets().chomp()
+        line = gets()
+        if !line
+          raise(WebSocket::Error, "Client disconnected without sending anything.")
+        end
+        line = line.chomp()
         if !(line =~ /\AGET (\S+) HTTP\/1.1\z/n)
-          raise(WebSocket::Error, "invalid request: #{line}")
+          raise(WebSocket::Error, "Invalid request: #{line}")
         end
         @path = $1
         read_header()
@@ -501,7 +505,7 @@ class WebSocketServer
         send_flash_socket_policy_file(socket)
         return nil
       else
-        socket.ungetc(ch)
+        socket.ungetc(ch) if ch
         return WebSocket.new(socket, :server => self)
       end
     end
